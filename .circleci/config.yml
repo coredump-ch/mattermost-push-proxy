@@ -1,28 +1,44 @@
-version: 2.1
+version: 2
 jobs:
-  lint:
+  build:
     docker:
-      - image: circleci/golang:1.12
-
-    working_directory: /go/src/github.com/mattermost/mattermost-push-proxy
+      - image: docker:stable
     steps:
       - checkout
-      - run: curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-      - run: make check-style
-
-  test:
-    docker:
-      - image: circleci/golang:1.12
-
-    working_directory: /go/src/github.com/mattermost/mattermost-push-proxy
-    steps:
-      - checkout
-      - run: curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-      - run: make test
-
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: |
+            docker build \
+              --no-cache \
+              -t coredump/mattermost-push-proxy:latest \
+              -t coredump/mattermost-push-proxy:${CIRCLE_BRANCH} \
+              .
+      - deploy:
+          name: Push Docker image
+          command: |
+            docker login -u $DOCKER_USER -p $DOCKER_API_KEY && \
+            docker push coredump/mattermost-push-proxy
 workflows:
   version: 2
-  untagged-build:
+
+  # Build on push to docker branch
+  on_push:
     jobs:
-      - lint
-      - test
+      - build:
+          filters:
+            branches:
+              only:
+                - docker
+
+  # Build every week on Monday at 04:00 am
+  weekly:
+    triggers:
+      - schedule:
+          cron: "0 4 * * 1"
+          filters:
+            branches:
+              only:
+                - docker
+    jobs:
+      - build
